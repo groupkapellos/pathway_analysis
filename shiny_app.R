@@ -7,7 +7,7 @@ library(readxl)
 library(ggplot2)
 
 # Read the Excel file
-data <- read_excel("data/compiled_gene_lists.xlsx")
+data <- read_excel("./data/compiled_gene_lists.xlsx")
 
 # Define UI for the application
 ui <- fluidPage(
