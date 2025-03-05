@@ -1,9 +1,3 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
-
 ## **Pathway Gene Finder Shiny App**
 
 This is a Shiny application for finding pathways based on selected genes
