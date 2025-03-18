@@ -50,27 +50,6 @@ ui <- fluidPage(
 # Define server logic for the application
 server <- function(input, output, session) {
   
-  # Handle the pathway search
-  observeEvent(input$search, {
-    req(input$pathway)
-    pathway_name <- input$pathway
-    
-    # Filter the data based on the selected pathway
-    if (pathway_name != "Select a Pathway") {
-      results <- data %>%
-        filter(grepl(pathway_name, pathway, ignore.case = TRUE))
-      
-      # Output the results
-      output$results <- renderTable({
-        results
-      })
-    } else {
-      output$results <- renderTable({
-        NULL
-      })
-    }
-  })
-  
   # Handle the gene list search
   observeEvent(input$find_pathways, {
     req(input$gene_list)
@@ -86,9 +65,47 @@ server <- function(input, output, session) {
       })) %>%
       select(pathway, Positive_Genes)  # Select only relevant columns
     
+    # Show only the genes that were actually entered (i.e., that exist in the Positive_Genes slot)
+    matched_pathways$Detected_Genes <- sapply(matched_pathways$Positive_Genes, function(genes) {
+      intersect(gene_list, strsplit(genes, ", ")[[1]])
+    })
+    
+    # Ensure that Detected_Genes is converted into a proper format (if it's a list, turn it into a string)
+    matched_pathways$Detected_Genes <- sapply(matched_pathways$Detected_Genes, function(genes) {
+      if (length(genes) > 0) {
+        return(paste(genes, collapse = ", "))
+      } else {
+        return("No detected genes")
+      }
+    })
+    
+    # Count how many genes were detected for each pathway (convert the count to numeric)
+    matched_pathways$Detected_Gene_Count <- sapply(matched_pathways$Detected_Genes, function(detected_genes) {
+      length(strsplit(detected_genes, ", ")[[1]])
+    })
+    
+    # Add a frequency score: Number of detected genes vs total genes for that pathway
+    matched_pathways$Frequency_Score <- sapply(matched_pathways$Positive_Genes, function(genes) {
+      detected_genes <- intersect(gene_list, strsplit(genes, ", ")[[1]])
+      detected_count <- length(detected_genes)
+      total_count <- length(strsplit(genes, ", ")[[1]])
+      detected_count / total_count  # Frequency score as ratio
+    })
+    
+    # Order pathways by the number of detected genes in descending order
+    matched_pathways <- matched_pathways %>%
+      arrange(desc(Detected_Gene_Count))
+    
+    # Debugging: print structure of matched_pathways to check if it’s a data frame
+    print(str(matched_pathways))
+    
+    # Ensure that it's a data frame before rendering
+    matched_pathways <- as.data.frame(matched_pathways)
+    
     # Output the results of pathways associated with the gene list
     output$pathway_results <- renderTable({
-      matched_pathways
+      matched_pathways %>%
+        select(pathway, Detected_Genes, Detected_Gene_Count, Frequency_Score)  # Display relevant columns
     })
     
     # Create a barplot showing the number of genes in each pathway
@@ -116,3 +133,6 @@ server <- function(input, output, session) {
 
 # Run the application
 shinyApp(ui = ui, server = server)
+
+
+#This also needs to work with multiple inputs, so the inputs are a comma separated gene list 
