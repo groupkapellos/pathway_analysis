@@ -18,9 +18,9 @@ ui <- fluidPage(
     tabPanel("Pathway Search",
              fluidRow(
                column(12,
-                      # Dropdown for pathway selection
+                      # Dropdown for pathway selection, sorted alphabetically
                       selectInput("pathway", "Select Pathway Name:", 
-                                  choices = c("Select a Pathway", unique(data$pathway)), 
+                                  choices = c("Select a Pathway", sort(unique(data$pathway))), 
                                   selected = "Select a Pathway"),
                       actionButton("search", "Search")
                ),
@@ -38,16 +38,16 @@ ui <- fluidPage(
                       actionButton("find_pathways", "Find Pathways")
                ),
                column(12,
-                      h3("Associated Pathways"),
-                      tableOutput("pathway_results"),
-                      plotOutput("gene_count_plot") # Barplot output
+                      h3("Gene Search Results"),
+                      plotOutput("gene_count_plot"),    # Barplot output - now first
+                      tableOutput("pathway_results"),   # Table output for pathways
+                      textOutput("unmatched_message")  # Text message for unmatched genes
                )
              )
     )
   )
 )
 
-# Define server logic for the application
 server <- function(input, output, session) {
   
   # Handle the gene list search
@@ -57,6 +57,10 @@ server <- function(input, output, session) {
     # Split the input gene list into individual genes
     gene_list <- unlist(strsplit(input$gene_list, ","))
     gene_list <- trimws(gene_list)  # Remove any leading/trailing spaces
+    
+    # Track genes not found in any pathway
+    unmatched_genes <- gene_list
+    genes_not_associated <- c()  # To track genes that are not associated with any pathway
     
     # Filter the data for pathways that contain any of the genes in the gene list
     matched_pathways <- data %>%
@@ -70,55 +74,52 @@ server <- function(input, output, session) {
       intersect(gene_list, strsplit(genes, ", ")[[1]])
     })
     
-    # Ensure that Detected_Genes is converted into a proper format (if it's a list, turn it into a string)
+    # Sort the genes in Detected_Genes column alphabetically for each row
     matched_pathways$Detected_Genes <- sapply(matched_pathways$Detected_Genes, function(genes) {
       if (length(genes) > 0) {
-        return(paste(genes, collapse = ", "))
+        return(paste(sort(genes), collapse = ", "))  # Sort genes alphabetically for each pathway
       } else {
-        return("No detected genes")
+        return(NULL)  # Return NULL instead of "No detected genes"
       }
     })
     
-    # Count how many genes were detected for each pathway (convert the count to numeric)
+    # Remove detected genes from unmatched_genes list
+    detected_genes <- unique(unlist(matched_pathways$Detected_Genes))
+    unmatched_genes <- setdiff(gene_list, detected_genes)
+    
+    # Track genes that were not associated with any pathway
+    for (gene in gene_list) {
+      if (!any(gene %in% detected_genes)) {
+        genes_not_associated <- c(genes_not_associated, gene)
+      }
+    }
+    
+    # Fix the mutate issue: check if Detected_Genes is character before using strsplit
     matched_pathways$Detected_Gene_Count <- sapply(matched_pathways$Detected_Genes, function(detected_genes) {
-      length(strsplit(detected_genes, ", ")[[1]])
+      if (!is.null(detected_genes) && is.character(detected_genes)) {
+        return(length(strsplit(detected_genes, ", ")[[1]]))  # Ensure count is a whole number
+      } else {
+        return(0)
+      }
     })
     
-    # Add a frequency score: Number of detected genes vs total genes for that pathway
-    matched_pathways$Frequency_Score <- sapply(matched_pathways$Positive_Genes, function(genes) {
-      detected_genes <- intersect(gene_list, strsplit(genes, ", ")[[1]])
-      detected_count <- length(detected_genes)
-      total_count <- length(strsplit(genes, ", ")[[1]])
-      detected_count / total_count  # Frequency score as ratio
-    })
-    
-    # Order pathways by the number of detected genes in descending order
+    # Sort by Detected_Gene_Count in descending order
     matched_pathways <- matched_pathways %>%
       arrange(desc(Detected_Gene_Count))
     
-    # Debugging: print structure of matched_pathways to check if it’s a data frame
-    print(str(matched_pathways))
-    
-    # Ensure that it's a data frame before rendering
-    matched_pathways <- as.data.frame(matched_pathways)
-    
-    # Output the results of pathways associated with the gene list
-    output$pathway_results <- renderTable({
-      matched_pathways %>%
-        select(pathway, Detected_Genes, Detected_Gene_Count, Frequency_Score)  # Display relevant columns
-    })
-    
-    # Create a barplot showing the number of genes in each pathway
+    # Limit the plot to the top 10 pathways based on Detected_Gene_Count, excluding "Not Found"
     pathway_gene_count <- matched_pathways %>%
-      mutate(gene_count = sapply(strsplit(Positive_Genes, ", "), length)) %>%
+      mutate(gene_count = sapply(strsplit(Detected_Genes, ", "), length)) %>%
       group_by(pathway) %>%
       summarise(total_genes = sum(gene_count)) %>%
-      arrange(desc(total_genes))
+      arrange(desc(total_genes)) %>%
+      top_n(10, total_genes)  # Limit to the top 10 pathways
     
+    # Output the bar plot with top 10 pathways ordered by total gene count
     output$gene_count_plot <- renderPlot({
       ggplot(pathway_gene_count, aes(x = reorder(pathway, -total_genes), y = total_genes)) +
         geom_bar(stat = "identity", fill = "skyblue") +
-        labs(x = "Pathway", y = "Number of Genes", title = "Pathways with Associated Genes") +
+        labs(x = "Pathway", y = "Number of Genes", title = "Top 10 Pathways with Associated Genes") +
         theme(
           axis.text.x = element_text(angle = 45, hjust = 1, size = 14),  # Increase size of x-axis text
           axis.text.y = element_text(size = 14),  # Increase size of y-axis text
@@ -128,6 +129,25 @@ server <- function(input, output, session) {
         )
     })
     
+    # Display the unmatched genes as a message
+    output$unmatched_message <- renderText({
+      if (length(unmatched_genes) > 0) {
+        # Sort the unmatched genes alphabetically
+        unmatched_genes_sorted <- sort(unmatched_genes)
+        paste("The following genes were not found to be associated with the database: ", 
+              paste(unmatched_genes_sorted, collapse = ", "))
+      } else {
+        "All entered genes were found to be associated with pathways in the database."
+      }
+    })
+    
+    # Output the results of pathways associated with the gene list (excluding "Not Found" row)
+    output$pathway_results <- renderTable({
+      matched_pathways %>%
+        filter(!is.null(Detected_Genes)) %>%  # Remove rows where Detected_Genes is NULL
+        select(pathway, Detected_Genes, Detected_Gene_Count)  # Display relevant columns
+    })
+    
   })
 }
 
@@ -135,4 +155,3 @@ server <- function(input, output, session) {
 shinyApp(ui = ui, server = server)
 
 
-#This also needs to work with multiple inputs, so the inputs are a comma separated gene list 

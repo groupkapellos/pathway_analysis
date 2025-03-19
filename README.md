@@ -10,16 +10,30 @@ To run this Shiny app on your local machine, you will need the following softwar
 
 **RStudio:** Although not strictly necessary, RStudio is a great integrated development environment (IDE) for R. You can download it from RStudio.
 
-### **Installing Dependencies**
+**Git:** You will also need to have Git installed for cloning the repository. If you're new to Git or prefer a simpler method, we recommend using GitHub Desktop.
+
+### **Installing Git** 
+
+**Using git:** Download and install Git from [here](https://git-scm.com/). Once installed, follow the installing dependencies section below to clone the repository.
+
+**Using GitHub Desktop:** GitHub Desktop is a simpler alternative for users who are not familiar with git.
+
+1.  Download and install GitHub Desktop from [here](https://desktop.github.com/).
+2.  Once installed, open GitHub Desktop and sign in with your GitHub account.
+3.  Go to File \> Clone repository.
+4.  In the URL tab, paste the repository URL: `https://github.com/groupkapellos/pathway_analysis.git`
+5.  Choose the folder where you want to clone the repository (e.g., Documents) and click Clone.
+
+### **Installing Dependencies** 
 
 This app requires several R packages. To make the installation process easier, we've provided a script that will automatically install the required packages for you.
 
-**Step 1:** Download the Repository First, clone or download this repository to your local machine:
+**Step 1:** Download the Repository First, clone or download this repository to the folder where you want to store the files.
 
 If you have Git installed, you can clone the repository by running:
 
 ```{bash}
-git clone https://github.com/your-username/pathway-gene-finder.git 
+git clone https://github.com/groupkapellos/pathway_analysis.git
 ```
 
 **Step 2:** Install Required Packages Navigate to the folder where you downloaded the repository (for example, pathway-gene-finder/). Inside the repository, you'll find the *install_dependencies.R* script.
@@ -33,10 +47,8 @@ git clone https://github.com/your-username/pathway-gene-finder.git
 4.  run the command:
 
     ```{r}
-    setwd("path/to/pathway-gene-finder") 
+    setwd("path/to/pathway_project") 
     ```
-
-<!-- -->
 
 5.  Run the install_dependencies.R script:
 
@@ -51,7 +63,7 @@ This will check if the required packages are already installed. If any packages 
 In the same R session or RStudio, run the following command:
 
 ```{r}
-shiny::runApp("pathway-gene-finder")
+shiny::runApp("path/to/shiny_app.R")
 ```
 
-This will launch the app in your default web browser.
+Alternatively, you can open and run the script run_pathway_app.R. Either of these methods will launch the app in your default web browser.
