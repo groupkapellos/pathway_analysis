@@ -11,9 +11,15 @@ library(stringr)
 # Read the Excel file
 data <- read_excel("data/compiled_gene_lists.xlsx")
 
-# Define UI for the application
 ui <- fluidPage(
   titlePanel("Pathway-Gene Association Mapper"),
+  
+  # Definition Box
+  wellPanel(
+    h3("Gene Definitions"),
+    p(strong("Positive Genes:"), " Database-derived genes that are truly associated with a pathway or biological process."),
+    p(strong("Negative Genes:"), " Database-derived genes that are only loosely associated with a pathway or biological process.")
+  ),
   
   tabsetPanel(
     tabPanel("Search by Pathway",
@@ -56,7 +62,31 @@ ui <- fluidPage(
   )
 )
 
+
 server <- function(input, output, session) {
+  
+  # Handle the pathway search (Search by Pathway)
+  observeEvent(input$search, {
+    req(input$pathway)
+    
+    # If no pathway is selected, display an empty table
+    if (input$pathway == "Select a Pathway") {
+      output$results <- renderTable({
+        data.frame(Message = "Please select a pathway to search.")
+      })
+    } else {
+      # Filter the data for the selected pathway
+      filtered_pathway_data <- data %>%
+        filter(pathway == input$pathway) %>%
+        select(pathway, Positive_Genes)
+      
+      #cam we change the output names to pathway and positive genes 
+      # Show the filtered results in the results table
+      output$results <- renderTable({
+        filtered_pathway_data
+      })
+    }
+  })
   
   # Store the filtered data in a reactive value
   filtered_data <- reactiveVal()
