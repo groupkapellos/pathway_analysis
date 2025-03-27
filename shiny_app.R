@@ -14,7 +14,6 @@ data <- read_excel("data/compiled_gene_lists.xlsx")
 ui <- fluidPage(
   titlePanel("Pathway-Gene Association Mapper"),
   
-  # Definition Box
   wellPanel(
     h3("Gene Definitions"),
     p(strong("Positive Genes:"), " Database-derived genes that are truly associated with a pathway or biological process."),
@@ -32,7 +31,8 @@ ui <- fluidPage(
                ),
                column(12,
                       h3("Search Results"),
-                      tableOutput("results")
+                      tableOutput("results"),
+                      downloadButton("download_pathway_results", "Download Pathway Search Results")
                )
              )
     ),
@@ -46,7 +46,7 @@ ui <- fluidPage(
                       h3("Gene Search Results"),
                       plotOutput("gene_count_plot"), 
                       tableOutput("pathway_results"),  
-                      textOutput("unmatched_message") 
+                      textOutput("unmatched_message")
                ),
                column(12,
                       downloadButton("download_filtered_data", "Download Filtered Data")
@@ -61,7 +61,8 @@ ui <- fluidPage(
              fluidRow(
                column(12,
                       h3("Gene and Pathway Database"),
-                      tableOutput("gene_pathway_table")
+                      tableOutput("gene_pathway_table"),
+                      downloadButton("download_gene_pathway_table", "Download Gene-Pathway Table")
                )
              )
     )
@@ -70,7 +71,6 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
-  # Handle the pathway search (Search by Pathway)
   observeEvent(input$search, {
     req(input$pathway)
     
@@ -94,28 +94,38 @@ server <- function(input, output, session) {
   observeEvent(input$find_pathways, {
     req(input$gene_list)
     
-    gene_list <- unlist(strsplit(input$gene_list, ","))
-    gene_list <- trimws(gene_list)
+    gene_list <- unlist(strsplit(input$gene_list, ",")) %>%
+      trimws() %>%
+      tolower()
     
-    unmatched_genes <- gene_list
-    genes_not_associated <- c()  
+    all_positive_pairs <- data %>%
+      filter(!is.na(Positive_Genes)) %>%
+      separate_rows(Positive_Genes, sep = ", ") %>%
+      rename(Gene = Positive_Genes) %>%
+      mutate(Gene = tolower(Gene))
     
-    for (gene in gene_list) {
-      gene_found <- any(sapply(data$Positive_Genes, function(positive_genes) {
-        gene %in% trimws(strsplit(positive_genes, ",")[[1]])
-      }))
-      
-      if (!gene_found) {
-        genes_not_associated <- c(genes_not_associated, gene)
-      }
-    }
+    gene_pathway_matches <- all_positive_pairs %>%
+      filter(Gene %in% gene_list) %>%
+      group_by(Gene) %>%
+      summarise(Matched_Pathways = n_distinct(pathway), .groups = "drop")
     
-    unmatched_genes_sorted <- sort(genes_not_associated)
+    gene_total_pathways <- all_positive_pairs %>%
+      group_by(Gene) %>%
+      summarise(Total_Pathways = n_distinct(pathway), .groups = "drop")
+    
+    gene_scores <- left_join(gene_pathway_matches, gene_total_pathways, by = "Gene") %>%
+      mutate(
+        Gene_Frequency_Score = Matched_Pathways / Total_Pathways,
+        Match_Overview = paste0(Matched_Pathways, "/", Total_Pathways),
+        Gene = toupper(Gene)
+      )
+    
+    unmatched_genes <- setdiff(gene_list, unique(all_positive_pairs$Gene))
     
     output$unmatched_message <- renderText({
-      if (length(unmatched_genes_sorted) > 0) {
-        paste("The following genes were not found to be associated with the database: ", 
-              paste(unmatched_genes_sorted, collapse = ", "))
+      if (length(unmatched_genes) > 0) {
+        paste("The following genes were not found to be associated with the database:", 
+              paste(toupper(unmatched_genes), collapse = ", "))
       } else {
         "All entered genes were found to be associated with pathways in the database."
       }
@@ -123,17 +133,17 @@ server <- function(input, output, session) {
     
     matched_pathways <- data %>%
       filter(sapply(strsplit(Positive_Genes, ", "), function(genes) {
-        any(gene_list %in% genes)
+        any(tolower(gene_list) %in% tolower(genes))
       })) %>%
       select(pathway, Positive_Genes)
     
     matched_pathways$Detected_Genes <- sapply(matched_pathways$Positive_Genes, function(genes) {
-      intersect(gene_list, strsplit(genes, ", ")[[1]])
+      intersect(gene_list, tolower(strsplit(genes, ", ")[[1]]))
     })
     
     matched_pathways$Detected_Genes <- sapply(matched_pathways$Detected_Genes, function(genes) {
       if (length(genes) > 0) {
-        return(paste(sort(genes), collapse = ", "))
+        return(toupper(paste(sort(genes), collapse = ", ")))
       } else {
         return(NULL)
       }
@@ -147,26 +157,30 @@ server <- function(input, output, session) {
       }
     })
     
-    # Frequency Score Calculation
-    pathway_counts <- data %>%
+    pathway_gene_totals <- all_positive_pairs %>%
       group_by(pathway) %>%
-      summarise(
-        total_positive = sum(!is.na(Positive_Genes)),  # Count non-NA values as positives
-        total_negative = sum(is.na(Positive_Genes)),   # Count NA values as negatives
-        .groups = "drop"
-      ) %>%
-      mutate(Frequency_Score = total_positive / (total_positive + total_negative))
+      summarise(Total_Genes = n_distinct(Gene), .groups = "drop")
+    
+    matched_pathways$Detected_Gene_List <- sapply(matched_pathways$Detected_Genes, function(x) {
+      strsplit(x, ", ")[[1]]
+    })
+    
+    matched_pathways$Matched_Count <- sapply(matched_pathways$Detected_Gene_List, length)
     
     matched_pathways <- matched_pathways %>%
-      left_join(pathway_counts, by = "pathway") %>%
-      arrange(desc(Detected_Gene_Count))
+      left_join(pathway_gene_totals, by = "pathway") %>%
+      mutate(
+        Match_Overview = paste0(Matched_Count, "/", Total_Genes),
+        Pathway_Frequency_Score = Matched_Count / Total_Genes
+      )
     
     filtered_data(matched_pathways)
     
     pathway_gene_count <- matched_pathways %>%
       mutate(gene_count = sapply(strsplit(Detected_Genes, ", "), length)) %>%
       group_by(pathway) %>%
-      summarise(total_genes = sum(gene_count), Frequency_Score = mean(Frequency_Score, na.rm = TRUE)) %>%
+      summarise(total_genes = sum(gene_count), 
+                Pathway_Frequency_Score = mean(Pathway_Frequency_Score, na.rm = TRUE)) %>%
       arrange(desc(total_genes)) %>%
       top_n(10, total_genes)
     
@@ -189,7 +203,8 @@ server <- function(input, output, session) {
     output$pathway_results <- renderTable({
       matched_pathways %>%
         filter(!is.null(Detected_Genes)) %>%
-        select(pathway, Detected_Genes, Detected_Gene_Count, Frequency_Score)
+        arrange(desc(Detected_Gene_Count)) %>%
+        select(pathway, Detected_Genes, Detected_Gene_Count, Match_Overview, Pathway_Frequency_Score)
     })
     
     upset_data <- matched_pathways %>%
@@ -204,25 +219,39 @@ server <- function(input, output, session) {
       select(-pathway_gene_set)
     
     output$upset_plot <- renderPlot({
+      top_pathways <- colSums(as.data.frame(upset_matrix))
+      top_10_pathways <- names(sort(top_pathways, decreasing = TRUE))[1:min(10, length(top_pathways))]
+      
       upset(
-        as.data.frame(upset_matrix), 
+        as.data.frame(upset_matrix),
+        sets = top_10_pathways,
         sets.bar.color = "skyblue", 
         main.bar.color = "darkblue",
         order.by = "freq", 
         set_size.show = TRUE,
-        text.scale = 1.5
+        text.scale = 1.5,
+        mainbar.y.label = "Top 10 Pathway Overlaps"
       )
     })
     
     gene_pathway_data <- matched_pathways %>%
       separate_rows(Detected_Genes, sep = ", ") %>%
+      mutate(Detected_Genes = toupper(Detected_Genes)) %>%
       select(Detected_Genes, pathway) %>%
       distinct() %>%
       group_by(Detected_Genes) %>%
       summarise(pathways = paste(pathway, collapse = ", "), .groups = "drop")
     
     output$gene_pathway_table <- renderTable({
-      gene_pathway_data
+      gene_pathway_data %>%
+        mutate(Pathway_Count = as.integer(str_count(pathways, ",") + 1)) %>%
+        arrange(desc(Pathway_Count)) %>%
+        select(Detected_Genes, pathways, Pathway_Count)
+    })
+    
+    output$gene_frequency_table <- renderTable({
+      gene_scores %>%
+        select(Gene, Match_Overview, Gene_Frequency_Score)
     })
   })
   
@@ -231,13 +260,44 @@ server <- function(input, output, session) {
       paste("filtered_pathway_gene_data.csv")
     },
     content = function(file) {
-      write.csv(filtered_data(), file)
+      write.csv(filtered_data(), file, row.names = FALSE)
+    }
+  )
+  
+  output$download_pathway_results <- downloadHandler(
+    filename = function() {
+      paste("pathway_search_results.csv")
+    },
+    content = function(file) {
+      if (input$pathway != "Select a Pathway") {
+        write.csv(data %>%
+                    filter(pathway == input$pathway) %>%
+                    select(pathway, Positive_Genes), file, row.names = FALSE)
+      } else {
+        write.csv(data.frame(Message = "No pathway selected."), file, row.names = FALSE)
+      }
+    }
+  )
+  
+  output$download_gene_pathway_table <- downloadHandler(
+    filename = function() {
+      paste("gene_pathway_database.csv")
+    },
+    content = function(file) {
+      gene_pathway_data <- filtered_data() %>%
+        separate_rows(Detected_Genes, sep = ", ") %>%
+        mutate(Detected_Genes = toupper(Detected_Genes)) %>%
+        select(Detected_Genes, pathway) %>%
+        distinct() %>%
+        group_by(Detected_Genes) %>%
+        summarise(pathways = paste(pathway, collapse = ", "), .groups = "drop") %>%
+        mutate(Pathway_Count = as.integer(str_count(pathways, ",") + 1)) %>%
+        arrange(desc(Pathway_Count)) %>%
+        select(Detected_Genes, pathways, Pathway_Count)
+      
+      write.csv(gene_pathway_data, file, row.names = FALSE)
     }
   )
 }
 
-
-
-
-# Run the Shiny application
 shinyApp(ui = ui, server = server)
