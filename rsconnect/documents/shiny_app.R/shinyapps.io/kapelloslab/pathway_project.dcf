@@ -1,0 +1,13 @@
+name: pathway_project
+title: pathway_project
+username: kapelloslab
+account: kapelloslab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14366044
+bundleId: 10019465
+url: https://kapelloslab.shinyapps.io/pathway_project/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: data_organisation/removing_duplicate_genes.R|install_dependencies.R|run_pathway_app.R

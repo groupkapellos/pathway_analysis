@@ -1,3 +1,4 @@
+
 # Load necessary libraries
 library(shiny)
 library(dplyr)
@@ -8,8 +9,9 @@ library(ggplot2)
 library(UpSetR)
 library(stringr)
 
-# Read the Excel file
-data <- read_excel("data/compiled_gene_lists.xlsx")
+# Read the Excel file and filter for show == TRUE
+data <- read_excel("data/pathway_gene_file.xlsx") %>%
+  filter(!is.na(`Show`) & as.logical(`Show`) == TRUE)
 
 ui <- fluidPage(
   titlePanel("Pathway-Gene Association Mapper"),
