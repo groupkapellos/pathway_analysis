@@ -1,0 +1,12 @@
+name: pathway_project
+title: pathway_analysis
+username: theodoroskapelloslab
+account: theodoroskapelloslab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15146228
+bundleId: 10706200
+url: https://theodoroskapelloslab.shinyapps.io/pathway_project/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
